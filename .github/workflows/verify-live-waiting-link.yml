@@ -1,0 +1,56 @@
+name: Verify live waiting Kakao link
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-live-waiting-link.yml'
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify published page and old Kakao link
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import urllib.request,urllib.error,re,subprocess
+          base="https://lgh2229-ui.github.io/waiting-customer-web/"
+          old="https://xlpwxkcxpxorrmkgzhft.supabase.co/functions/v1/waiting-my-status"
+          api="https://xlpwxkcxpxorrmkgzhft.supabase.co/functions/v1/restaurant-waiting-ticket"
+          req=urllib.request.Request(base,headers={"User-Agent":"WaitingKakaoStatusTest/1.0"})
+          with urllib.request.urlopen(req,timeout=22) as resp:
+              html=resp.read().decode("utf-8")
+              ct=resp.headers.get("content-type","")
+              assert resp.status==200 and "text/html" in ct,(resp.status,ct)
+          for expected in ['id="cancel"','request("cancel"','request("read"','([tc])=([0-9a-f]{24}|[0-9a-f]{64})',api]:
+              assert expected in html,expected
+          assert '<!doctype html>' in html.lower()
+          # Raw browser JS parse check: script is inline and locally self-contained.
+          js=html.split('<script>')[1].split('</script>')[0]
+          with open('/tmp/waiting.js','w') as f:f.write(js)
+          subprocess.run(['node','--check','/tmp/waiting.js'],check=True)
+          print('PASS: published site serves rendered HTML with valid ticket read/cancel logic')
+          # Get 302 without following and check the publicly registered destination.
+          import urllib.request
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*args,**kwargs):return None
+          opener=urllib.request.build_opener(NoRedirect)
+          try:
+              resp=opener.open(old,timeout=15)
+              code=resp.status
+          except urllib.error.HTTPError as e:
+              resp=e;code=e.code
+          location=resp.headers.get('location','')
+          assert code==302 and location==base,(code,location)
+          print('PASS: original Kakao button link redirects to standalone waiting site')
+          # Check cross-origin ticket API preflight (without reading or changing any real ticket).
+          pre=urllib.request.Request(api,method="OPTIONS",headers={
+              'Origin':'https://lgh2229-ui.github.io',
+              'Access-Control-Request-Method':'POST',
+              'Access-Control-Request-Headers':'content-type'
+          })
+          with urllib.request.urlopen(pre,timeout=15) as resp:
+              cors=resp.headers.get('access-control-allow-origin','')
+              assert resp.status==200 and cors in ('*','https://lgh2229-ui.github.io'),(resp.status,cors)
+          print('PASS: status/cancel API allows the new website origin')
+          PY
