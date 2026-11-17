@@ -1,0 +1,62 @@
+name: Deploy waiting customer web
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: waiting-web-pages
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy-pages.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate production waiting ticket page
+        run: |
+          node <<'NODE'
+          const fs=require('node:fs'),assert=require('node:assert/strict');
+          const page=fs.readFileSync('index.html','utf8');
+          assert(page.startsWith('<!doctype html>'));
+          assert(page.includes('id="cancel"'));
+          assert(page.includes('대기번호'));
+          assert(page.includes('restaurant-waiting-ticket'));
+          assert(page.includes('https://xlpwxkcxpxorrmkgzhft.supabase.co/functions/v1/restaurant-waiting-ticket'));
+          assert(page.includes('request("read"'));
+          assert(page.includes('request("cancel"'));
+          assert(page.includes('취소하면 대기순서를 복구할 수 없습니다.'));
+          assert(page.includes('([tc])=([0-9a-f]{24}|[0-9a-f]{64})'));
+          assert(!page.includes('SUPABASE_SERVICE_ROLE_KEY'));
+          const js=page.split('<script>')[1].split('</script>')[0];
+          new Function(js);
+          console.log('PASS: waiting status, cancellation, token safety and JS');
+          NODE
+      - name: Verify ticket API is accessible from hosted origin
+        run: |
+          python3 - <<'PY'
+          from urllib.request import Request,urlopen
+          req=Request('https://xlpwxkcxpxorrmkgzhft.supabase.co/functions/v1/restaurant-waiting-ticket',method='OPTIONS',headers={'Origin':'https://lgh2229-ui.github.io','Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'content-type'})
+          with urlopen(req,timeout=15) as r:
+            assert r.status==200
+            h=r.headers.get('access-control-allow-origin')
+            assert h in ('*','https://lgh2229-ui.github.io'),h
+            print('PASS: Supabase ticket API CORS allows separate web host')
+          PY
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: .
+      - name: Publish customer page
+        id: deploy-pages
+        uses: actions/deploy-pages@v4
