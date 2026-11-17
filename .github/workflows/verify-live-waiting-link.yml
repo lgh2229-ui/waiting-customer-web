@@ -53,4 +53,16 @@ jobs:
               cors=resp.headers.get('access-control-allow-origin','')
               assert resp.status==200 and cors in ('*','https://lgh2229-ui.github.io'),(resp.status,cors)
           print('PASS: status/cancel API allows the new website origin')
+          # A guaranteed-invalid ticket must be rejected; this does not touch real customer tickets.
+          import json
+          fake=urllib.request.Request(api,data=json.dumps({'action':'read','token':'000000000000000000000000'}).encode('utf-8'),
+            headers={'Content-Type':'application/json','Origin':'https://lgh2229-ui.github.io'},method='POST')
+          try:
+              with urllib.request.urlopen(fake,timeout=15) as response:
+                  data=json.load(response)
+                  raise AssertionError(('unexpected fake token accepted',data))
+          except urllib.error.HTTPError as e:
+              data=json.loads(e.read())
+              assert e.code==404 and data.get('error')=='NOT_FOUND',(e.code,data)
+          print('PASS: hosted-site API reaches DB and securely rejects nonexistent ticket')
           PY
