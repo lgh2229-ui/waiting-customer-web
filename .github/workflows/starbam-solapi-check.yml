@@ -1,0 +1,14 @@
+name: Audit starbam Solapi channel setup
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/starbam-solapi-check.yml'
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect registered Kakao channels and config flags without exposing secrets
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 25 'https://xlpwxkcxpxorrmkgzhft.supabase.co/functions/v1/waiting-starbam-solapi-audit-20261118' | python3 -m json.tool
