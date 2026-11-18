@@ -1,0 +1,13 @@
+name: Inspect approved waiting cancel templates
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/inspect-waiting-cancel-20261118.yml']
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read Solapi approved templates (no messages sent)
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 20 'https://xlpwxkcxpxorrmkgzhft.supabase.co/functions/v1/waiting-template-readonly-check-20261118' | python3 -m json.tool
